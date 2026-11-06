@@ -35,15 +35,17 @@ data/models/    权重目录（gitignore，需本机拉取）
 
 ## 快速启动
 
-### 1. 拉取权重
+### 1. 安装依赖
 
 ```bash
 cd apps/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # 或 cu124
 pip install -r requirements.txt
-python ../../scripts/fetch_models.py
 ```
+
+权重**不必**先手动下载：API 在 `H3D_PIPELINE=real`（默认）启动时会检查并自动拉取缺失的 SMPL-X / MediaPipe / SegFormer。  
+离线或 CI 仍可手动：`python scripts/fetch_models.py`。关闭自动拉取：`export H3D_AUTO_FETCH_MODELS=0`。
 
 ### 2. API
 
@@ -53,7 +55,8 @@ cd apps/api && source .venv/bin/activate
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-`GET /api/health` → `"backend":"real"`
+首次启动可能下载约 520MB+ 权重；日志会打印 `[check]` / `[fetch]` / `[ok]`。  
+`GET /api/health` → `"backend":"real"`，并含 `models` 检查摘要。
 
 ### 3. Web
 
@@ -74,7 +77,14 @@ cd apps/web && npm install && npm run dev
 关闭 mock（默认已关闭）：不要设置 `H3D_PIPELINE=mock`。  
 强制 mock：`export H3D_PIPELINE=mock`。
 
-可选：`H3D_DEVICE=cuda`、`H3D_DENSEPOSE=detectron2`（需自行安装 Detectron2 DensePose）。
+| Env | Default | 含义 |
+|-----|---------|------|
+| `H3D_PIPELINE` | `real` | `real` / `mock` |
+| `H3D_AUTO_FETCH_MODELS` | `1` | 启动时自动拉缺失权重；`0` 关闭 |
+| `H3D_DEVICE` | `cpu` | `cpu` / `cuda` |
+| `H3D_DENSEPOSE` | `smplx_iuv` | 可选 `detectron2`（需自装） |
+
+自动拉取失败时 API **不会**静默回退 mock，启动会报错退出（除非显式 `H3D_PIPELINE=mock`）。
 
 ## 资产合约
 

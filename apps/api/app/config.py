@@ -43,3 +43,10 @@ SCHP_MODEL_ID = os.environ.get(
 
 # Optional Detectron2 DensePose; when unset, use SegFormer parts + SMPL-X IUV.
 DENSEPOSE_BACKEND = os.environ.get("H3D_DENSEPOSE", "smplx_iuv").strip().lower()
+
+# On API startup (real backend): auto-download missing weights. Set 0 to disable.
+AUTO_FETCH_MODELS = os.environ.get("H3D_AUTO_FETCH_MODELS", "1") not in {
+    "0",
+    "false",
+    "False",
+}

@@ -1,86 +1,45 @@
 #!/usr/bin/env python3
-"""Download weights required by the real H3D pipeline.
+"""CLI wrapper around `app.models_fetch` for offline / CI use.
 
-SMPL-X: research license from https://smpl-x.is.tue.mpg.de/ — this script pulls a
-commonly mirrored `SMPLX_NEUTRAL.pkl` for development. You must accept the MPI
-SMPL-X license before redistributing or commercial use.
-
-SCHP-equivalent: Hugging Face `mattmdjaga/segformer_b2_clothes` (Apache-2.0 / model card).
-MediaPipe Pose: Google Apache-2.0 task bundle.
+API startup also calls the same module when H3D_PIPELINE=real and
+H3D_AUTO_FETCH_MODELS=1 (default).
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
+import logging
 import sys
-import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = ROOT / "data" / "models"
+# Allow running from repo root without installing the package.
+API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
+sys.path.insert(0, str(API_ROOT))
 
-
-def fetch_smplx(dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / "SMPLX_NEUTRAL.pkl"
-    if target.exists() and target.stat().st_size > 1_000_000:
-        print(f"[ok] SMPL-X already present: {target}")
-        return
-    try:
-        from huggingface_hub import hf_hub_download
-    except ImportError:
-        raise SystemExit("pip install huggingface_hub")
-    print("Downloading SMPLX_NEUTRAL.pkl (≈520MB)…")
-    path = hf_hub_download(
-        repo_id="stran9682/smplx_model",
-        filename="SMPLX_NEUTRAL.pkl",
-        local_dir=str(dest / "_hf"),
-    )
-    shutil.copy2(path, target)
-    print(f"[ok] {target} ({target.stat().st_size} bytes)")
-    print(
-        "NOTE: SMPL-X is © Max Planck Institute. Register at "
-        "https://smpl-x.is.tue.mpg.de/ and comply with the license."
-    )
-
-
-def fetch_mediapipe(dest: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    target = dest / "pose_landmarker_full.task"
-    if target.exists():
-        print(f"[ok] MediaPipe pose already present: {target}")
-        return
-    url = (
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-        "pose_landmarker_full/float16/latest/pose_landmarker_full.task"
-    )
-    print("Downloading MediaPipe pose landmarker…")
-    urllib.request.urlretrieve(url, target)
-    print(f"[ok] {target}")
-
-
-def prefetch_schp() -> None:
-    print("Prefetching SegFormer clothes parser (SCHP-equivalent)…")
-    from transformers import SegformerForSemanticSegmentation
-
-    SegformerForSemanticSegmentation.from_pretrained("mattmdjaga/segformer_b2_clothes")
-    print("[ok] SegFormer cached via Hugging Face hub")
+from app.models_fetch import ensure_real_models  # noqa: E402
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--skip-schp", action="store_true")
+    ap = argparse.ArgumentParser(description="Download H3D real-pipeline weights")
+    ap.add_argument("--skip-schp", action="store_true", help="Skip SegFormer prefetch")
     args = ap.parse_args()
-    fetch_smplx(MODEL_DIR / "smplx")
-    fetch_mediapipe(MODEL_DIR / "mediapipe")
-    if not args.skip_schp:
-        prefetch_schp()
-    print("Done. Default pipeline backend is real (H3D_PIPELINE=real).")
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    report = ensure_real_models(skip_schp=args.skip_schp, log=print)
+    print(
+        "Done.",
+        f"present={report.present}",
+        f"downloaded={report.downloaded}",
+        f"skipped={report.skipped}",
+    )
+    print("Default pipeline backend is real (H3D_PIPELINE=real).")
 
 
 if __name__ == "__main__":
     try:
         main()
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
     except KeyboardInterrupt:
         sys.exit(130)
