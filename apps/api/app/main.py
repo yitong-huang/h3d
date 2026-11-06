@@ -15,13 +15,14 @@ from .config import (
     ALLOWED_IMAGE_TYPES,
     JOB_DIR,
     MAX_IMAGES_PER_JOB,
+    PIPELINE_BACKEND,
     UPLOAD_DIR,
     USE_INLINE_PIPELINE,
 )
 from .jobs import store
-from .assets.glb_generator import write_mock_glb
+from .pipeline.factory import backend_name
 
-app = FastAPI(title="H3D API", version="0.1.0")
+app = FastAPI(title="H3D API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,7 +38,9 @@ def health() -> dict:
     return {
         "ok": True,
         "service": "h3d-api",
-        "pipeline": "inline-mock" if USE_INLINE_PIPELINE else "celery",
+        "backend": backend_name(),
+        "pipelineMode": "inline" if USE_INLINE_PIPELINE else "celery",
+        "env": {"H3D_PIPELINE": PIPELINE_BACKEND},
     }
 
 
@@ -124,19 +127,30 @@ def get_result(job_id: str) -> dict:
     return job.get("result") or {}
 
 
+def _write_demo_glb(path: Path) -> dict:
+    """Generate a real SMPL-X (or mock if forced) demo asset."""
+    if backend_name() == "mock":
+        from .assets.glb_generator import write_mock_glb
+
+        return write_mock_glb(path)
+    from .assets.smplx_glb import write_smplx_glb
+
+    return write_smplx_glb(path, betas=[0.0] * 10)
+
+
 @app.post("/api/demo/generate-glb")
 def demo_generate_glb() -> dict:
     """Dev helper: write a sample GLB without uploading photos."""
     out = JOB_DIR / "_demo" / "avatar.glb"
-    meta = write_mock_glb(out)
-    return {"glbUrl": "/api/demo/avatar.glb", "meta": meta}
+    meta = _write_demo_glb(out)
+    return {"glbUrl": "/api/demo/avatar.glb", "meta": meta, "backend": backend_name()}
 
 
 @app.get("/api/demo/avatar.glb")
 def demo_avatar() -> FileResponse:
     path = JOB_DIR / "_demo" / "avatar.glb"
     if not path.exists():
-        write_mock_glb(path)
+        _write_demo_glb(path)
     return FileResponse(path, media_type="model/gltf-binary", filename="avatar.glb")
 
 

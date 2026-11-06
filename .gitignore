@@ -7,6 +7,8 @@ __pycache__/
 .DS_Store
 data/uploads/
 data/jobs/
+data/models/
+!data/models/.gitkeep
 *.egg-info/
 .env
 .vite/

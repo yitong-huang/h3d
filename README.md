@@ -1,66 +1,90 @@
 # H3D
 
-个性化虚拟化身工作台：上传 1–N 张人像/局部特写 → 衣下素体生成（MVP 为 mock GPU 管线）→ Web 姿态/表情/身材编辑 → 导出标准 GLB + Pose JSON。
+个性化虚拟化身工作台：上传 1–N 张人像/局部特写 → **真实**衣下素体推理（SMPL-X）→ Web 姿态/表情/身材编辑 → 导出标准 GLB + Pose JSON。
+
+默认后端为 **real**（`H3D_PIPELINE=real`）。仅调试时可 `H3D_PIPELINE=mock` 回退程序化假人。
 
 ## 仓库结构
 
 ```text
 apps/
-  api/          FastAPI + 可插拔推理管线（默认 inline mock）
+  api/          FastAPI + 可插拔推理管线（默认 real）
   web/          React + Three.js 工作台
 packages/
   contracts/    骨骼 / Morph / Pose JSON 合约
-data/           本地上传与任务产物（gitignore）
+scripts/
+  fetch_models.py   下载 SMPL-X / MediaPipe / 预热 SegFormer
+data/models/    权重目录（gitignore，需本机拉取）
 ```
+
+## 硬件与依赖
+
+| 项目 | 要求 |
+|------|------|
+| OS | Linux / macOS（需 `libEGL` 供 MediaPipe） |
+| Python | 3.11+ |
+| RAM | ≥8 GB（推荐 16 GB；CPU 拟合） |
+| GPU | 可选。设 `H3D_DEVICE=cuda` 可加速；无 GPU 时默认 CPU |
+| 磁盘 | ≈1 GB 权重（SMPL-X ≈520 MB + HF 缓存） |
+
+### 许可
+
+- **SMPL-X**：Max Planck Institute 研究许可。使用前请在 [smpl-x.is.tue.mpg.de](https://smpl-x.is.tue.mpg.de/) 注册并遵守条款。`fetch_models.py` 仅拉取开发用镜像权重，**不**代替官方授权。
+- **SegFormer clothes**（SCHP 开源等价）：Hugging Face `mattmdjaga/segformer_b2_clothes`
+- **MediaPipe Pose**：Apache-2.0
 
 ## 快速启动
 
-### 1. API
+### 1. 拉取权重
 
 ```bash
 cd apps/api
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # 或 cu124
 pip install -r requirements.txt
+python ../../scripts/fetch_models.py
+```
+
+### 2. API
+
+```bash
+cd apps/api && source .venv/bin/activate
+# 默认 real；调试假人：export H3D_PIPELINE=mock
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-健康检查：`GET http://127.0.0.1:8000/api/health`  
-演示 GLB：`POST http://127.0.0.1:8000/api/demo/generate-glb`
+`GET /api/health` → `"backend":"real"`
 
-### 2. Web
+### 3. Web
 
 ```bash
-cd apps/web
-npm install
-npm run dev
+cd apps/web && npm install && npm run dev
+# http://127.0.0.1:5173
 ```
 
-打开 `http://127.0.0.1:5173`（Vite 已将 `/api` 代理到 `:8000`）。
+## 推理阶段（默认 real）
 
-### 3. 端到端演示
+| 阶段 | 实现 | 说明 |
+|------|------|------|
+| 图像分流 | MediaPipe Pose + SegFormer clothes | SCHP 开源等价；DensePose 默认 `smplx_iuv` 投影 |
+| 衣下体型 | SMPL-X 可微拟合 + 衣物松弛补偿 | SHAPY/BCNet **开源等价**（非官方 SHAPY 权重） |
+| 局部融合 | PnP (`solvePnPRansac`) + `seamlessClone` 泊松 + Sobel 法线 | 真实几何/图像处理 |
+| 资产组装 | 官方 SMPL-X 前向 → GLB | **10475 verts**、55+4 骨、morph、`_PART_ID` |
 
-1. 点击「加载演示模型」，或上传 1–10 张 JPG/PNG/WEBP  
-2. 等待任务完成（mock 管线约 1 秒）  
-3. 在右侧工作台调整姿态 / 手势 / 表情 / 身材 / 分区遮罩  
-4. 导出 `h3d-avatar.glb` 与 `h3d-pose.json`
+关闭 mock（默认已关闭）：不要设置 `H3D_PIPELINE=mock`。  
+强制 mock：`export H3D_PIPELINE=mock`。
 
-## 管线阶段（可替换）
+可选：`H3D_DEVICE=cuda`、`H3D_DENSEPOSE=detectron2`（需自行安装 Detectron2 DensePose）。
 
-| 阶段 | 接口 | MVP 实现 |
-|------|------|----------|
-| 图像分流 | `ImageParseRouter` | 启发式 mock（DensePose/SCHP 桩） |
-| 衣下体型 | `UnderClothingEstimator` | 图像哈希 → β ∈ ℝ¹⁰（SHAPY 桩） |
-| 局部融合 | `LocalDetailMerger` | 记录区域与虚拟相机（PnP/泊松桩） |
-| 资产组装 | `AssetAssembler` | 程序化 skinned GLB（59 骨 + morph + `_PART_ID`） |
+## 资产合约
 
-Redis/Celery：见 `app/pipeline/celery_app.py`；开发默认 `USE_INLINE_PIPELINE=True`（线程内跑任务）。
-
-## 资产合约（摘要）
-
-- 59 joints：55 基础骨 + 4 辅助骨（`Spine3_Breast_*`, `Pelvis_Glute_*`）  
-- Morph：`breast_scale` / `waist_scale` / `glute_scale` / `thigh_scale` + 表情通道  
-- 顶点属性 `_PART_ID`：0–7 身体分区遮罩  
+- 拓扑：SMPL-X **10475** 顶点（real）
+- 59 joints：55 SMPL-X + 4 helper（Breast/Glute）
+- Morph：身材 + 表情通道；`_PART_ID` 0–7
 - Pose JSON：`packages/contracts/pose.schema.json`
 
-> MVP 网格为 SMPL-X **拓扑契约兼容的简化人体**（约 1.2k 顶点），非完整 10,475 顶点官方拓扑；换真实 SMPL-X 权重时保持同名骨骼 / morph / `_PART_ID` 即可。
+## 已知缺口
+
+- 官方 SHAPY / Detectron2 DensePose 权重未捆绑；默认用开源等价物，接口可替换
+- UV 为 SMPL-X 自带 vt 按顶点折叠（非独立全展开烘焙）；换装级非重叠 UV 可后续替换
+- 表情 morph 为基于分区的几何偏移，非 FLAME 表情基
