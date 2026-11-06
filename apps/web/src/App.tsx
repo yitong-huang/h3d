@@ -95,7 +95,7 @@ export default function App() {
           <AvatarViewer url={glbUrl} state={state} />
           {job?.result?.stages && (
             <details className="pipeline-log">
-              <summary>管线阶段（mock）</summary>
+              <summary>管线阶段</summary>
               <pre>{JSON.stringify(job.result.stages, null, 2)}</pre>
             </details>
           )}

@@ -24,12 +24,13 @@ USE_INLINE_PIPELINE = os.environ.get("H3D_INLINE_PIPELINE", "1") not in {
     "False",
 }
 
-# Default: real backends. Set H3D_PIPELINE=mock to force stubs.
-PIPELINE_BACKEND = os.environ.get("H3D_PIPELINE", "real").strip().lower()
+# Default MUST be real. Only H3D_PIPELINE=mock enables stubs.
+PIPELINE_BACKEND = os.environ.get("H3D_PIPELINE", "real").strip().lower() or "real"
 
 SMPLX_MODEL_DIR = Path(os.environ.get("H3D_SMPLX_DIR", str(MODEL_DIR)))
 SMPLX_GENDER = os.environ.get("H3D_SMPLX_GENDER", "neutral")
-DEVICE = os.environ.get("H3D_DEVICE", "cpu")  # cpu | cuda
+# auto → cuda if available, else mps on macOS if available, else cpu
+DEVICE = (os.environ.get("H3D_DEVICE", "auto") or "auto").strip().lower()
 
 MEDIAPIPE_POSE_TASK = Path(
     os.environ.get(

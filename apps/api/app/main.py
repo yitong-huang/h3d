@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import (
     ALLOWED_IMAGE_TYPES,
     AUTO_FETCH_MODELS,
+    DEVICE,
     JOB_DIR,
     MAX_IMAGES_PER_JOB,
     PIPELINE_BACKEND,
@@ -35,8 +36,18 @@ def _startup_log(msg: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """On real backend: check/fetch model weights before serving traffic."""
+    """Resolve device; on real backend check/fetch model weights before serving."""
+    from .device import device_report, resolve_device
+
     backend = backend_name()
+    _startup_log(
+        f"Startup: default pipeline is REAL "
+        f"(H3D_PIPELINE env={PIPELINE_BACKEND!r} → backend={backend!r}). "
+        "Mock only if H3D_PIPELINE=mock is set explicitly."
+    )
+    resolve_device()  # logs auto selection
+    _app.state.device_report = device_report()
+
     if backend == "real":
         if AUTO_FETCH_MODELS:
             _startup_log(
@@ -83,14 +94,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             }
     else:
         _startup_log(
-            f"Startup: H3D_PIPELINE={PIPELINE_BACKEND} — model auto-fetch skipped."
+            f"Startup: H3D_PIPELINE={PIPELINE_BACKEND} (explicit mock) — "
+            "model auto-fetch skipped."
         )
         _app.state.models_report = {"backend": backend, "autoFetch": False}
 
     yield
 
 
-app = FastAPI(title="H3D API", version="0.2.1", lifespan=lifespan)
+app = FastAPI(title="H3D API", version="0.2.2", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -103,15 +115,22 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
+    from .device import device_report
+
     return {
         "ok": True,
         "service": "h3d-api",
         "backend": backend_name(),
+        "defaultPipeline": "real",
         "pipelineMode": "inline" if USE_INLINE_PIPELINE else "celery",
         "autoFetchModels": AUTO_FETCH_MODELS,
+        "device": getattr(app.state, "device_report", None) or device_report(),
         "models": getattr(app.state, "models_report", None),
         "env": {
             "H3D_PIPELINE": PIPELINE_BACKEND,
+            "H3D_PIPELINE_default": "real",
+            "H3D_DEVICE": DEVICE,
+            "H3D_DEVICE_default": "auto",
             "H3D_AUTO_FETCH_MODELS": "1" if AUTO_FETCH_MODELS else "0",
         },
     }
