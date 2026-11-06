@@ -9,13 +9,8 @@ from typing import Any
 import numpy as np
 import torch
 
-from ..config import DEVICE, SMPLX_GENDER, SMPLX_MODEL_DIR
-
-
-def resolve_device() -> torch.device:
-    if DEVICE.startswith("cuda") and torch.cuda.is_available():
-        return torch.device(DEVICE)
-    return torch.device("cpu")
+from ..config import SMPLX_GENDER, SMPLX_MODEL_DIR
+from ..device import resolve_device
 
 
 def _model_root() -> str:

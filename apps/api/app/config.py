@@ -24,12 +24,13 @@ USE_INLINE_PIPELINE = os.environ.get("H3D_INLINE_PIPELINE", "1") not in {
     "False",
 }
 
-# Default: real backends. Set H3D_PIPELINE=mock to force stubs.
-PIPELINE_BACKEND = os.environ.get("H3D_PIPELINE", "real").strip().lower()
+# Default MUST be real. Only H3D_PIPELINE=mock enables stubs.
+PIPELINE_BACKEND = os.environ.get("H3D_PIPELINE", "real").strip().lower() or "real"
 
 SMPLX_MODEL_DIR = Path(os.environ.get("H3D_SMPLX_DIR", str(MODEL_DIR)))
 SMPLX_GENDER = os.environ.get("H3D_SMPLX_GENDER", "neutral")
-DEVICE = os.environ.get("H3D_DEVICE", "cpu")  # cpu | cuda
+# auto → cuda if available, else mps on macOS if available, else cpu
+DEVICE = (os.environ.get("H3D_DEVICE", "auto") or "auto").strip().lower()
 
 MEDIAPIPE_POSE_TASK = Path(
     os.environ.get(
@@ -43,3 +44,10 @@ SCHP_MODEL_ID = os.environ.get(
 
 # Optional Detectron2 DensePose; when unset, use SegFormer parts + SMPL-X IUV.
 DENSEPOSE_BACKEND = os.environ.get("H3D_DENSEPOSE", "smplx_iuv").strip().lower()
+
+# On API startup (real backend): auto-download missing weights. Set 0 to disable.
+AUTO_FETCH_MODELS = os.environ.get("H3D_AUTO_FETCH_MODELS", "1") not in {
+    "0",
+    "false",
+    "False",
+}
