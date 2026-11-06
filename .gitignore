@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+data/uploads/
+data/jobs/
+*.egg-info/
+.env
+.vite/
+*.tsbuildinfo
+apps/api/.venv/
