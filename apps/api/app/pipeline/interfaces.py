@@ -31,6 +31,8 @@ class BodyEstimate:
     theta_hint: list[float]  # coarse pose hint
     skin_tone_rgb: tuple[float, float, float]
     notes: str = ""
+    # Real pipeline: full SMPL-X parameter pack for assembly / fusion
+    full_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
