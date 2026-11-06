@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://h3d.dev/schemas/pose.schema.json",
+  "title": "H3DPose",
+  "type": "object",
+  "required": ["version", "bones", "morphs"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "bones": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["rotation"],
+        "properties": {
+          "rotation": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Quaternion [x, y, z, w]"
+          }
+        }
+      }
+    },
+    "morphs": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    }
+  }
+}
